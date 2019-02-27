@@ -1,0 +1,72 @@
+\documentclass[12pt, titlepage]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1.0in]{geometry}
+
+\title{Technical Analysis: Communications Between Phantom and GUI}
+\author{Nam Tran\\ Biomedical Engineering\thanks{Undergraduate}, The George Washington University}
+\date{February 2019}
+
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{forest}
+
+\usepackage[parfill]{parskip}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+The transvenous pacing training model must be able to simulate the ECG signal caused by the movement of a balloon catheter from the jugular vein down to the lower right ventricle of the heart. To do this, sensors are being placed along the tube that the catheter must travel through in the model. This way, as the catheter is advanced, the light source for each sensor is obstructed by the catheter and causes the light level to change.
+
+From there, the measured position must be sent from the microcontroller inside the model to a computer. The computer then displays the corresponding ECG signal for that position. This must be done in real-time so that the student training on the model can use the ECG signal for feedback on whether they are in the right location to begin pacing \cite{backgroundreport}.
+
+Originally for our transvenous pacing training phantom, we used a wired serial connection connected between the UART of an STM32 microcontroller and a USB port of the computer running the simulation GUI. After discussing with the client, it came to our attention that having the phantom communicate wireless to the computer would make our product more useful. This is due to having a wire constantly connected to a monitor can cause issues with moving the phantom. It could also causes a communication failure if the wire is accidentally unplugged during training.
+
+The solution that the team discussed was to replace the wired serial connection with a serial over Bluetooth implementation. By doing this, a few problems were introduced specific to Bluetooth that had to be solved.
+
+\section{Methods}
+One of the first issues was deciding on hardware for the Bluetooth. Two possible options were determined:
+
+\begin{enumerate}
+  \item Use an external Bluetooth module connected to the existing STM32 microcontroller
+  \item Change from the STM32 microcontroller to a microcontroller with an integrated Bluetooth module
+\end{enumerate}
+
+Of these options, it was decided that using a microcontroller with integrated Bluetooth would be the most fitting solution. This was due to having limited space within the phantom.
+
+From there, a microcontroller had to be selected. Numerous companies came up during research that had microcontrollers with built-in Bluetooth. 
+
+\begin{enumerate}
+    \item Texas Instruments
+    \item Cypress
+    \item Espressif
+    \item Nordic
+    \item Qualcomm
+\end{enumerate}
+
+After looking through the company sites for one chip per company to compare, I created the following table for comparison.
+
+\begin{tabular}{ |p{3cm}||p{3cm}|p{3cm}|p{3cm}|p{3cm}|  }
+    \hline
+    \multicolumn{5}{|c|}{Bluetooth System-on-a-Chips} \\
+    \hline
+    Chip & Manufacturer & Clock Speed (MHz) & CPU Cores & Cost/Unit (\$)\\
+    \hline
+    CC2650 \cite{cc2650} & T.I.      & 48  & 1 & 2.65 \\
+    ESP32  \cite{esp32}  & Espressif & 240 & 2 & 3.80 \\
+    CYBLE-222005 \cite{cyble} & Cypress & 48 & 1 & 14.50 \\
+    \hline
+\end{tabular}
+
+\section{Results}
+
+
+\section{Discussion}
+
+\clearpage
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+\end{document}
