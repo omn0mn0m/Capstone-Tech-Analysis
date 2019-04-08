@@ -1,15 +1,43 @@
 \documentclass[12pt, titlepage]{article}
+
 \usepackage[utf8]{inputenc}
 \usepackage[margin=1.0in]{geometry}
+\usepackage{listings}
+\usepackage{color}
 
-\title{Technical Analysis: Communications Between Phantom and GUI}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+ 
+\lstdefinestyle{cstyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+ 
+\lstset{style=cstyle}
+
+\title{Technical Analysis: Bluetooth Communications Between Phantom and GUI}
 \author{Nam Tran\\ Biomedical Engineering\thanks{Undergraduate}, The George Washington University}
 \date{February 2019}
 
 \usepackage[english]{babel}
 \usepackage{graphicx}
 \usepackage{float}
-\usepackage{forest}
 
 \usepackage[parfill]{parskip}
 
@@ -18,15 +46,31 @@
 \maketitle
 
 \section{Introduction}
-The transvenous pacing training model must be able to simulate the ECG signal caused by the movement of a balloon catheter from the jugular vein down to the lower right ventricle of the heart. To do this, sensors are being placed along the tube that the catheter must travel through in the model. This way, as the catheter is advanced, the light source for each sensor is obstructed by the catheter and causes the light level to change.
+The objective of this capstone project is to upgrade a preexisting transvenous pacing training model. Transvenous pacing is a process that involves advancing a balloon catheter through a patient's jugular vein until it reaches the right ventricular wall.
 
-From there, the measured position must be sent from the microcontroller inside the model to a computer. The computer then displays the corresponding ECG signal for that position. This must be done in real-time so that the student training on the model can use the ECG signal for feedback on whether they are in the right location to begin pacing \cite{backgroundreport}.
+The transvenous pacing training model must be able to simulate the ECG signal caused by the movement of a balloon catheter from the jugular vein down to the lower right ventricle of the heart. This is important so that the physician performing the procedure can know when they have reached the target area for pacing. To do this, sensors are being placed along the tube that the catheter must travel through in the model. This way, as the catheter is advanced, the light source for each sensor is obstructed by the catheter, causing the light level to change.
 
-Originally for our transvenous pacing training phantom, we used a wired serial connection connected between the UART of an STM32 microcontroller and a USB port of the computer running the simulation GUI. After discussing with the client, it came to our attention that having the phantom communicate wireless to the computer would make our product more useful. This is due to having a wire constantly connected to a monitor can cause issues with moving the phantom. It could also causes a communication failure if the wire is accidentally unplugged during training.
+From there, the measured position must be sent from the microcontroller inside the model to a computer. The computer then displays the corresponding ECG signal for that position. This must be done in real-time so that the trainee can have practice in knowing when they have reached the target area \cite{backgroundreport}.
 
-The solution that the team discussed was to replace the wired serial connection with a serial over Bluetooth implementation. By doing this, a few problems were introduced specific to Bluetooth that had to be solved.
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{p{6cm}|p{6cm}}
+        \hline
+         Objectives & Functions \\
+        \hline
+         Be able to accurately determine catheter location during times of increased motion (e.g. shaking due to nervousness) & Display signal on training room monitor \\
+          & Display a continuous ECG signal based on the location of the balloon catheter \\
+    \end{tabular}
+    \caption{Relevant objectives and functions pertaining to wireless communications between the training model and the GUI}
+    \label{tab:my_label}
+\end{table}
+
+Originally for our transvenous pacing training phantom, we used a wired serial connection connected between the UART of an STM32 microcontroller and a USB port of the computer running the simulation GUI. After discussing with the client, it was decided that having the phantom communicate wireless to the computer would result in a more useful product. This is due to having a wire constantly connected to a monitor can cause issues with moving the phantom. It could also causes a communication failure if the wire is accidentally unplugged during training.
+
+The main problem to solve was figuring out a way to wirelessly communicate between the phantom and the GUI. Bluetooth was selected as the component to implement due to our project only requiring a simple short-distance communication channel between two devices. 
 
 \section{Methods}
+\subsection{Microcontroller Selection}
 One of the first issues was deciding on hardware for the Bluetooth. Two possible options were determined:
 
 \begin{enumerate}
@@ -36,37 +80,231 @@ One of the first issues was deciding on hardware for the Bluetooth. Two possible
 
 Of these options, it was decided that using a microcontroller with integrated Bluetooth would be the most fitting solution. This was due to having limited space within the phantom.
 
-From there, a microcontroller had to be selected. Numerous companies came up during research that had microcontrollers with built-in Bluetooth. 
+From there, a microcontroller had to be selected. Numerous companies came up during research that had microcontrollers with built-in Bluetooth. After looking through the company sites for one chip per company to compare, Table 1 was created for comparison.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|c c c c c|}
+        \hline
+        \multicolumn{5}{|c|}{Bluetooth System-on-a-Chips} \\
+        \hline
+        Chip & Manufacturer & Clock Speed (MHz) & CPU Cores & Cost/Unit (\$)\\
+        \hline
+        CC2650 \cite{cc2650} & T.I.      & 48  & 1 & 2.65 \\
+        ESP32  \cite{esp32}  & Espressif & 240 & 2 & 3.80 \\
+        CYBLE-222005 \cite{cyble} & Cypress & 48 & 1 & 14.50 \\
+        \hline
+    \end{tabular}
+    \caption{Specifications of a Few Major Bluetooth SoCs}
+    \label{tab:mcuspecs}
+\end{table}
+
+As seen in Table \ref{tab:mcuspecs}, it can be seen that the ESP32 has a clear difference of having a 240 MHz clock speed with 2 CPU cores. To determine if this difference would affect the execution of the microcontroller firmware, the execution time for the code should be calculated. The execution time of a program on each microcontroller can be defined as
+
+\begin{equation}
+    T = I \times CPI \times CT
+    \label{eq:performance}
+\end{equation}
+
+where \textbf{T} is CPU execution time, \textbf{I} is instruction count, \textbf{CPI} is clocks per instruction, and \textbf{CT} is clock time \cite{perfeq}. Clock time can be defined as
+
+\begin{equation}
+    CT = \frac{1}{C}
+    \label{eq:clock-time}
+\end{equation}
+
+where \textbf{C} is the clock speed. By substituting Equation \ref{eq:clock-time} into Equation \ref{eq:performance}, the relationship
+
+\begin{equation}
+    T = I \times CPI \times \frac{1}{C}
+    \label{eq:performance-sub}
+\end{equation}
+
+can be derived.
+
+To use equation \ref{eq:performance-sub}, the CPI must be determined for each microcontroller. A few assumptions can be made to simplify the process of comparing the execution time of each microcontroller. 
+
+The assumptions are as follows:
 
 \begin{enumerate}
-    \item Texas Instruments
-    \item Cypress
-    \item Espressif
-    \item Nordic
-    \item Qualcomm
+    \item Each microcontroller is running the same behaviour, due to being used for the same application. Therefore the code for each microcontroller should be similar.
+    \item While each microcontroller's instruction set is different, given time to optimise code for the specific microcontroller, the instruction count for each compiled code will be comparable in size.
+    \item Unless significantly different a specific instruction, the average clocks per instruction for a microcontroller's instruction set is applicable to all instructions.
 \end{enumerate}
 
-After looking through the company sites for one chip per company to compare, I created the following table for comparison.
+To determine the average clocks per instruction, a few important distinctions were required. The first is that the TI CC2650 has an ARM Cortex-M3 processor. This is important because the CC2650 documentation lists the instruction set, but not its clock cycles.
 
-\begin{tabular}{ |p{3cm}||p{3cm}|p{3cm}|p{3cm}|p{3cm}|  }
-    \hline
-    \multicolumn{5}{|c|}{Bluetooth System-on-a-Chips} \\
-    \hline
-    Chip & Manufacturer & Clock Speed (MHz) & CPU Cores & Cost/Unit (\$)\\
-    \hline
-    CC2650 \cite{cc2650} & T.I.      & 48  & 1 & 2.65 \\
-    ESP32  \cite{esp32}  & Espressif & 240 & 2 & 3.80 \\
-    CYBLE-222005 \cite{cyble} & Cypress & 48 & 1 & 14.50 \\
-    \hline
-\end{tabular}
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|p{5cm} p{1.5cm} p{5cm} p{1.5cm} | }
+        \hline
+        \multicolumn{4}{|c|}{CC2650\cite{cortex-m3}} \\
+        \hline
+        Instruction & Clock Cycles & Instruction  & Clock Cycles \\
+        \hline
+        Move        & 1            & Add/Subtract & 1 \\
+        Multiply    & 4            & Divide       & 12 \\
+        Saturate    & 1            & Bit field    & 1 \\ 
+        Shift       & 1            & Rotate       & 1 \\
+        Count       & 1            & Logical      & 1 \\
+        Store/Load  & 2            & Push         & 4 \\
+        Pop         & 3            & Semaphore    & 2 \\
+        Branch/Extend & 1          & State Change & 2 \\
+        \hline
+        \multicolumn{4}{|c|}{Average Clock Cycles per Instruction: 2} \\
+        \hline
+        \hline
+        \multicolumn{4}{|c|}{ESP32\cite{esp-idf}} \\
+        \hline
+        Instruction & Clock Cycles & Instruction & Clock Cycles \\
+        \hline
+        Jump        & 1            & ALU         & 1 \\
+        Peripheral Register Access & 1 & Memory Access & 1 \\
+        Periph. Func. (ADC, etc) & 4 & & \\
+        \hline
+        \multicolumn{4}{|c|}{Average Clock Cycles per Instruction: 2} \\
+        \hline
+        \hline
+        \multicolumn{4}{|c|}{CYBLE-222005} \\
+        \hline
+        Instruction & Clock Cycles & Instruction & Clock Cycles \\
+        \hline
+        Not Found & & & \\
+        \hline
+        \multicolumn{4}{|c|}{Average Clock Cycles per Instruction: 2 (based off average of other 2 microcontrollers)} \\
+        \hline
+    \end{tabular}
+    \caption{Clock cycles per instruction for microcontrollers from Table \ref{tab:mcuspecs}}
+    \label{tab:instrset}
+\end{table}
+
+For all microcontrollers, if an instruction has a variable clock cycle count, the highest possible number of cycles was used for averaging. Additionally, all values are rounded.
+
+\subsection{Bluetooth}
+The next problem to solve is to implement a Bluetooth controller as a replacement for the existing wired serial connection. To do so, an understanding of the Bluetooth protocol must be had. There are multiple Bluetooth profiles that are preexisting and documented by the Bluetooth SIG group, but all of them are built on top of a Generic Access Profile (GAP) and Generic Attribute Profile (GATT) \cite{bt}.
+
+The GAP defines the basic requirements of a Bluetooth device, combining different architectural layouts to make the most basic version of the device. Four of the most common GAP roles can be listed in pairs: the observer and broadcaster, and the peripheral and central. The GATT defines the common operations and frameworks for the data "transported and stored" between devices. Two common GATT roles are the server and client, which are further specified by their GAPs.
+
+Because the problem calls for a wired serial replacement, we are able to use the predefined Bluetooth Serial Port Profile (SPP) rather than defining our own GAP and GATT. SPP is designed as a fill-in replacement for legacy applications originally designed for serial communications that now want to utilise Bluetooth. Because our system is being used in a classroom setting with no need for securing sensitive data, a more secure Bluetooth GATT and GAP implementation is not necessary \cite{spp}.
+
+For an SPP implementation, the devices must perform the following mandatory steps to connect.
+
+\begin{enumerate}
+    \item Request "virtual serial connection" with another device
+    \item Accept the "virtual serial connection"
+    \item Register the application calling for the connection
+\end{enumerate}
+
+Once the connection is established, the specifications for the SPP require interoperability with existing serial code. For example, information must be sent using RS232 control signals. This means that the implementation treats the connection as serial, and other software is responsible for translating the serial protocol to work with Bluetooth. For the ESP32, the official ESP integrated development framework (IDF) handles this conversion \cite{esp-idf}.
+
+From the previous subsection, the ESP32 microcontroller was determined as the best fit. The ESP32 has built-in native support to implement SPP. For the sake of time, the Arduino framework for ESP32 was used, but can be substituted with the ESP-IDF in the future for better hardware control.
+
+The BluetoothSerial class in the ESP32 Arudino framework implements the following functions.
+
+\begin{enumerate}
+    \item bool begin(String)
+    \item int available(void)
+    \item int peek(void)
+    \item bool hasClient(void)
+    \item int read(void)
+    \item size\_t write(uint8\_t)
+    \item size\_t write(const uint8\_t, size\_t)
+    \item void flush()
+    \item void end(void)
+    \item esp\_err\_t register\_callback(esp\_spp\_cb\_t * callback)
+\end{enumerate}
+
+Calling just the begin() function, all three required SPP connection steps are executed. The underlying BluetoothSerial class has over 90 lines of code to perform the three steps, which would all be required in my group's program without using the Arduino framework.
+
+Under closer analysis of the Arduino ESP32 framework, a few things were learned about the underlying Bluetooth implementation that is enabled using this method. The first was that the ESP32 interface acts purely as a wrapper for the underlying ESP-IDF functions required to perform each high-level function. The next thing that was learned was that the interface implements the Bluetooth serial as a component registered with FreeRTOS, a small-footprint real-time operating system used to utilise the ESP32's dual-core processor. This means that the Bluetooth serial is designed to work with in a parallel program \cite{arduino-esp}.
 
 \section{Results}
+\subsection{Microcontroller Selection}
+Through the use of the following command in Linux,
 
+\enspace
+
+\begin{lstlisting}[language=bash]
+  $ perf stats ./test_main
+\end{lstlisting}
+
+the compiled unit test program was analysed and benchmarks to obtain an estimate of the instruction count for one cycle. As the unit test only runs the functions for 1 sensor, and there are currently 9 in total, the instruction count can be multiplied by 9. The results of the perf stat test is described in Table \ref{tab:perf}.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{| c c c |}
+        \hline
+        Result & Measurement & Conversion \\
+        \hline
+        5.446864 & Task-clock (msec) & 0.015 CPUs utilised \\
+        10 & Context-switches & 0.002 M/sec \\
+        0 & CPU-migrations & 0.000 K/sec \\
+        170 & Page-faults & 0.031 M/sec \\
+        6213824 & Cycles & 1.141 GHz \\
+        6765073 & Instructions & 1.09 insn per cycle \\
+        1268049 & Branches & 232.804 M/sec \\
+        58397 & Branch-misses & 4.61\% of all branches \\
+        \hline
+    \end{tabular}
+    \caption{Performance profile of the test\_main executable using perf}
+    \label{tab:perf}
+\end{table}
+
+Using this information, as well as the information from Tables \ref{tab:mcuspecs} and \ref{tab:instrset}, Equation \ref{eq:performance-sub} can be used to calculate how long it would take each microcontroller to perform the same testbench code.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{| c | c c c |}
+        \hline
+        \bfseries Microcontroller
+        & CC2650 & ESP32 & CYBLE-222005 \\
+        \bfseries Execution Time (s)
+        & 2.537 & 0.507 & 2.537 \\
+        \hline
+    \end{tabular}
+    \caption{Microcontroller execution speed of test\_main}
+    \label{tab:perf-cpu}
+\end{table}
+
+On initial analysis, it would seem that the execution times are unreasonably slow for a microcontroller loop. However, it is important to note that the benchmarked program was a unit testing meaning that there are many I/O operations. This will greatly increase the number of instructions in the program.
+
+Even so, it is clear that the ESP32 is able to execute a program much faster compared to its competing microcontrollers. If the superior speed was still not sufficient, the ESP32 would be able to utilise its dual-core processor to perform truly parallel operations. Given that the training phantom must read from an ADC nine times (once for each sensor), filter each input in software, and output the resulting position per loop, having a faster microcontroller is essential.
+
+Finally, from researching the technical details of each microcontroller, such as clock speed, it became apparent that the ESP32 had what seemed to be the most/clearest documentation with the CC2650 having the next best documentation. The better documentation and community behind the ESP32 will allow for easier troubleshooting, which is important for a time-constrained project like capstone.
+
+\subsection{Bluetooth}
+Because of the emphasis on simplicity that the Arduino framework strives for, the code for enabling the ESP32 is short and non-descriptive. The following code is a skeleton version of the final microcontroller code, showing only the relevant lines to Bluetooth.
+
+\enspace
+
+\lstinputlisting[language=C++,
+caption=ESP32 microcontroller Bluetooth code \cite{cathetercode}]
+{code/bt-snippet.cpp}
+
+In this code, the setup only begins the Bluetooth SPP connection as discussed prior. Once this is done, Bluetooth has been successfully implemented on the microcontroller. After that in the loop, the microcontroller is checking if there are any available bytes in the virtual serial buffer, then reading in a single byte if there is one available. The code then should perform an action with this byte, determine an output byte, and write it back to the other device. This polling system was used due to the only data that needs to be transmitted is when a user is interacting with the project, meaning that the microcontroller code only needs to react as fast as the human reflex time (about 284 milliseconds for clicking on visual stimuli) \cite{reflex}.
+
+As discussed in the Methods section, the Arduino framework for the ESP32 acts as a wrapper for most of the hardware code required for the ESP32 to perform its functions. After implementing this code, the microcontroller was tested for range and had an effective range of 40 meters. This was measured by walking with the microcontroller while sending dummy data until the data was no longer receiving.
 
 \section{Discussion}
+The implementation itself was a simple process with predictable results due to prior knowledge of Bluetooth technology, but is now backed by a clearer understanding behind the design decisions chosen.
+
+As seen in the above technical analysis, there were two main considerations in implementing Bluetooth in my group's capstone project. The first was in selecting a microcontroller to use that had integrated Bluetooth. This was determined based on execution time differences for the same code due to clock speeds. The second was in how to actually implement the Bluetooth behaviour in firmware. This was done using the Arduino framework for the ESP32, guided by an understanding that we are using the documented Serial Port Profile for Bluetooth.
 
 \clearpage
 \bibliographystyle{ieeetr}
 \bibliography{references}
+
+\clearpage
+\appendix
+\section{Appendices}
+\subsection{Full Microcontroller Code}
+
+\lstinputlisting[language=C++]
+{code/main.cpp}
+
+\subsection{Unit Testing Code}
+
+\lstinputlisting[language=C++]
+{code/test_main.cpp}
 
 \end{document}
